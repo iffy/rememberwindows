@@ -38,8 +38,54 @@ func getWindowData(filename: String) {
             continue
         }
 
-        // Get window title
-        let title = windowDict[kCGWindowName as String] as? String
+        // Get window title using Accessibility API
+        var title: String?
+        let appRef = AXUIElementCreateApplication(pid)
+        var windowListRef: CFTypeRef?
+        var error = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowListRef)
+        
+        if error == .success, let axWindows = windowListRef as? [AXUIElement] {
+            var bestMatchScore: Double = Double.infinity
+            var bestMatchTitle: String?
+            
+            for axWindow in axWindows {
+                // Get window title
+                var windowTitle: CFTypeRef?
+                error = AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &windowTitle)
+                let axTitle = windowTitle as? String
+                
+                // Get Accessibility window position and size for matching
+                var axPositionRef: CFTypeRef?
+                var axSizeRef: CFTypeRef?
+                AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &axPositionRef)
+                AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &axSizeRef)
+                
+                let axPosition = axPositionRef.flatMap { posRef -> NSPoint? in
+                    guard CFGetTypeID(posRef) == AXValueGetTypeID() else { return nil }
+                    var point = NSPoint()
+                    AXValueGetValue(posRef as! AXValue, .cgPoint, &point)
+                    return point
+                }
+                let axSize = axSizeRef.flatMap { sizeRef -> NSSize? in
+                    guard CFGetTypeID(sizeRef) == AXValueGetTypeID() else { return nil }
+                    var size = NSSize()
+                    AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
+                    return size
+                }
+                
+                // Match by position and size proximity
+                if let axPos = axPosition, let axSize = axSize {
+                    let posDiff = pow(axPos.x - x, 2) + pow(axPos.y - y, 2)
+                    let sizeDiff = pow(axSize.width - width, 2) + pow(axSize.height - height, 2)
+                    let score = posDiff + sizeDiff
+                    if score < bestMatchScore {
+                        bestMatchScore = score
+                        bestMatchTitle = axTitle?.isEmpty == false ? axTitle : nil
+                    }
+                }
+            }
+            title = bestMatchTitle
+        }
 
         let windowInfo = WindowInfo(
             appName: appName,
@@ -51,13 +97,12 @@ func getWindowData(filename: String) {
         )
         windowData.append(windowInfo)
 
-        // Print position when saving
+        // Print position and title when saving
         print("Saving window position:")
         print("  App: \(appName)")
-        print("  Window ID: \(windowId)")
         print("  Title: \(title ?? "N/A")")
         print("  Position: (\(x), \(y))")
-        print("  Size: (\(width), \(height))")
+        print("  Title Saved: \(title != nil && !title!.isEmpty ? "Yes" : "No")")
         print("---")
     }
 
@@ -80,6 +125,12 @@ func setWindowData(filename: String) {
         let jsonData = try Data(contentsOf: URL(fileURLWithPath: filename))
         let windowData = try JSONDecoder().decode([WindowInfo].self, from: jsonData)
 
+        // Get current on-screen windows for ID matching
+        guard let currentWindowList = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as NSArray? else {
+            print("Error: Unable to retrieve current window list")
+            return
+        }
+
         for windowInfo in windowData {
             let appRef = AXUIElementCreateApplication(windowInfo.pid)
             var windowList: CFTypeRef?
@@ -95,50 +146,113 @@ func setWindowData(filename: String) {
                 continue
             }
 
-            // Try to find the target window by title, or fall back to position/size
+            // Try to find the target window by window ID first
             var targetWindow: AXUIElement?
-            var bestMatchScore: Double = Double.infinity
-            let targetPos = windowInfo.position
-            let targetSize = windowInfo.size
+            var matchType = "None"
 
-            for window in windows {
-                // Get window title
-                var windowTitle: CFTypeRef?
-                error = AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &windowTitle)
-                let currentTitle = windowTitle as? String
-
-                // Get current window position and size for fallback matching
-                var positionRef: CFTypeRef?
-                var sizeRef: CFTypeRef?
-                AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionRef)
-                AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeRef)
-                let currentPos = positionRef.flatMap { posRef -> NSPoint? in
-                    guard CFGetTypeID(posRef) == AXValueGetTypeID() else { return nil }
-                    var point = NSPoint()
-                    AXValueGetValue(posRef as! AXValue, .cgPoint, &point)
-                    return point
+            // Look for window with matching windowId in currentWindowList
+            var cgWindowFound = false
+            var cgPosition: NSPoint?
+            var cgSize: NSSize?
+            for currentWindow in currentWindowList {
+                guard let windowDict = currentWindow as? [String: Any],
+                      let currentWindowId = windowDict[kCGWindowNumber as String] as? Int,
+                      currentWindowId == windowInfo.windowId,
+                      let currentPid = windowDict[kCGWindowOwnerPID as String] as? pid_t,
+                      currentPid == windowInfo.pid,
+                      let boundsDict = windowDict[kCGWindowBounds as String] as? [String: Any],
+                      let x = boundsDict["X"] as? Double,
+                      let y = boundsDict["Y"] as? Double,
+                      let width = boundsDict["Width"] as? Double,
+                      let height = boundsDict["Height"] as? Double else {
+                    continue
                 }
-                let currentSize = sizeRef.flatMap { sizeRef -> NSSize? in
-                    guard CFGetTypeID(sizeRef) == AXValueGetTypeID() else { return nil }
-                    var size = NSSize()
-                    AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
-                    return size
-                }
+                cgWindowFound = true
+                cgPosition = NSPoint(x: x, y: y)
+                cgSize = NSSize(width: width, height: height)
+                break
+            }
 
-                // Match by title if available
-                if let savedTitle = windowInfo.title, let currentTitle = currentTitle, savedTitle == currentTitle {
-                    targetWindow = window
-                    break
+            if cgWindowFound, let cgPos = cgPosition, let cgSize = cgSize {
+                // Match CG window to Accessibility window by position/size proximity
+                var bestMatchScore: Double = Double.infinity
+                for window in windows {
+                    var positionRef: CFTypeRef?
+                    var sizeRef: CFTypeRef?
+                    AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionRef)
+                    AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeRef)
+                    let axPosition = positionRef.flatMap { posRef -> NSPoint? in
+                        guard CFGetTypeID(posRef) == AXValueGetTypeID() else { return nil }
+                        var point = NSPoint()
+                        AXValueGetValue(posRef as! AXValue, .cgPoint, &point)
+                        return point
+                    }
+                    let axSize = sizeRef.flatMap { sizeRef -> NSSize? in
+                        guard CFGetTypeID(sizeRef) == AXValueGetTypeID() else { return nil }
+                        var size = NSSize()
+                        AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
+                        return size
+                    }
+                    if let axPos = axPosition, let axSize = axSize {
+                        let posDiff = pow(axPos.x - cgPos.x, 2) + pow(axPos.y - cgPos.y, 2)
+                        let sizeDiff = pow(axSize.width - cgSize.width, 2) + pow(axSize.height - cgSize.height, 2)
+                        let score = posDiff + sizeDiff
+                        if score < bestMatchScore {
+                            bestMatchScore = score
+                            targetWindow = window
+                            matchType = "WindowID"
+                        }
+                    }
                 }
+            }
 
-                // Fallback: Match by position and size proximity
-                if let currentPos = currentPos, let currentSize = currentSize {
-                    let posDiff = pow(currentPos.x - targetPos[0], 2) + pow(currentPos.y - targetPos[1], 2)
-                    let sizeDiff = pow(currentSize.width - targetSize[0], 2) + pow(currentSize.height - targetSize[1], 2)
-                    let score = posDiff + sizeDiff
-                    if score < bestMatchScore {
-                        bestMatchScore = score
+            // Fallback to title matching if no window ID match
+            var titleMatchAttempted = false
+            if targetWindow == nil, let savedTitle = windowInfo.title, !savedTitle.isEmpty {
+                titleMatchAttempted = true
+                for window in windows {
+                    var windowTitle: CFTypeRef?
+                    error = AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &windowTitle)
+                    let currentTitle = windowTitle as? String
+                    if let currentTitle = currentTitle, !currentTitle.isEmpty, savedTitle == currentTitle {
                         targetWindow = window
+                        matchType = "Title"
+                        break
+                    }
+                }
+            }
+
+            // Fallback to position/size matching if no title match
+            if targetWindow == nil {
+                var bestMatchScore: Double = Double.infinity
+                let targetPos = windowInfo.position
+                let targetSize = windowInfo.size
+                for window in windows {
+                    var positionRef: CFTypeRef?
+                    var sizeRef: CFTypeRef?
+                    AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionRef)
+                    AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeRef)
+                    let currentPos = positionRef.flatMap { posRef -> NSPoint? in
+                        guard CFGetTypeID(posRef) == AXValueGetTypeID() else { return nil }
+                        var point = NSPoint()
+                        AXValueGetValue(posRef as! AXValue, .cgPoint, &point)
+                        return point
+                    }
+                    let currentSize = sizeRef.flatMap { sizeRef -> NSSize? in
+                        guard CFGetTypeID(sizeRef) == AXValueGetTypeID() else { return nil }
+                        var size = NSSize()
+                        AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
+                        return size
+                    }
+                    if let currentPos = currentPos, let currentSize = currentSize {
+                        let posDiff = pow(currentPos.x - targetPos[0], 2) + pow(currentPos.y - targetPos[1], 2)
+                        let sizeDiff = pow(currentSize.width - targetSize[0], 2) + pow(currentSize.height - targetSize[1], 2)
+                        let score = posDiff + sizeDiff
+                        if score < bestMatchScore {
+                            bestMatchScore = score
+                            targetWindow = window
+                            matchType = "Position/Size"
+                        }
                     }
                 }
             }
@@ -154,12 +268,21 @@ func setWindowData(filename: String) {
                     return point
                 }
 
+                // Get current title for logging
+                var currentTitleRef: CFTypeRef?
+                AXUIElementCopyAttributeValue(targetWindow, kAXTitleAttribute as CFString, &currentTitleRef)
+                let currentTitle = currentTitleRef as? String
+
                 // Print debugging information
                 print("Restoring window for \(windowInfo.appName) (PID: \(windowInfo.pid)):")
                 print("  Title: \(windowInfo.title ?? "N/A")")
+                print("  Current Window Title: \(currentTitle ?? "N/A")")
+                print("  Match Type: \(matchType)")
+                if titleMatchAttempted && matchType != "Title" {
+                    print("  Title Match Failed: No window with title '\(windowInfo.title ?? "N/A")' found")
+                }
                 print("  Current Position: \(currentPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
                 print("  Target Position: (\(windowInfo.position[0]), \(windowInfo.position[1]))")
-                print("  Target Size: (\(windowInfo.size[0]), \(windowInfo.size[1]))")
 
                 // Set position
                 var position = NSPoint(x: windowInfo.position[0], y: windowInfo.position[1])
@@ -198,6 +321,10 @@ func setWindowData(filename: String) {
                 print("---")
             } else {
                 print("No matching window found for \(windowInfo.appName) (PID: \(windowInfo.pid))")
+                print("  Title: \(windowInfo.title ?? "N/A")")
+                if titleMatchAttempted {
+                    print("  Title Match Failed: No window with title '\(windowInfo.title ?? "N/A")' found")
+                }
                 print("---")
             }
         }
