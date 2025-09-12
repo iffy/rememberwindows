@@ -1,0 +1,8 @@
+#!/bin/bash
+if [ ! -f /usr/local/bin/rememberwindows ]; then
+    echo "Error: Binary not found" >&2
+    exit 1
+fi
+# Load the launchd plist
+/bin/launchctl load /Library/LaunchDaemons/com.github.iffy.rememberwindows.plist
+exit 0
