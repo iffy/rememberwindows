@@ -11,6 +11,21 @@ make install # this will prompt for your password
 
 Try locking and unlocking your computer and see if the windows stay where they should.
 
+## Manual run
+
+This is what is run during lock/unlock:
+
+```
+./rememberwindows capture windowdata.json
+./rememberwindows reposition windowdata.json
+```
+
+This is a long-running process that monitors for lock/unlock events and does the window moving. If you're experiencing issues, disable the launchd service (`make uninstall`) and run it manually:
+
+```
+./rememberwindows monitor
+```
+
 ## Uninstall
 
 To remove everything run:
