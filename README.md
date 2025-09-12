@@ -11,7 +11,7 @@ make install # this will prompt for your password
 
 Try locking and unlocking your computer and see if the windows stay where they should.
 
-## Unintall
+## Uninstall
 
 To remove everything run:
 
