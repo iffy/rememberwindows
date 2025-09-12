@@ -11,7 +11,7 @@ struct WindowInfo: Codable {
     let title: String?
 }
 
-func getWindowData(filename: String) {
+func captureWindowData(filename: String) {
     // Get all on-screen windows
     guard let windowList = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as NSArray? else {
         print("Error: Unable to retrieve window list")
@@ -119,7 +119,7 @@ func getWindowData(filename: String) {
     }
 }
 
-func setWindowData(filename: String) {
+func repositionWindows(filename: String) {
     // Read JSON file
     do {
         let jsonData = try Data(contentsOf: URL(fileURLWithPath: filename))
@@ -335,9 +335,35 @@ func setWindowData(filename: String) {
     }
 }
 
+func monitorLockUnlock(filename: String) {
+    // Set up notification center for distributed notifications
+    let notificationCenter = DistributedNotificationCenter.default()
+
+    // Observe screensaver will start (just before potential lock)
+    notificationCenter.addObserver(
+        forName: NSNotification.Name("com.apple.screensaver.willstart"),
+        object: nil,
+        queue: .main
+    ) { _ in
+        print("Screensaver will start")
+        captureWindowData(filename: filename)
+    }
+
+    // Observe system wake notification
+    notificationCenter.addObserver(
+        forName: NSWorkspace.didWakeNotification,
+        object: nil,
+        queue: .main
+    ) { _ in
+        print("System woke up")
+        repositionWindows(filename: filename)
+    }
+    RunLoop.main.run()
+}
+
 func main() {
     guard CommandLine.arguments.count == 3 else {
-        print("Usage: ./windowfreezer [get|set] <filename>")
+        print("Usage: ./windowfreezer [capture|reposition|monitor] <filename>")
         exit(1)
     }
 
@@ -345,12 +371,16 @@ func main() {
     let filename = CommandLine.arguments[2]
 
     switch command {
-    case "get":
-        getWindowData(filename: filename)
-    case "set":
-        setWindowData(filename: filename)
+    case "capture":
+        captureWindowData(filename: filename)
+    case "reposition":
+        
+        repositionWindows(filename: filename)
+    case "monitor":
+        print("Monitoring screen lock/unlock and sleep/wake events...")
+        monitorLockUnlock(filename: filename)
     default:
-        print("Invalid command. Use 'get' or 'set'.")
+        print("Invalid command. Use 'capture', 'reposition' or 'monitor'.")
         exit(1)
     }
 }

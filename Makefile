@@ -1,5 +1,5 @@
-wfz: wfz.swift
-	swiftc wfz.swift -o wfz
+rememberwindows: rememberwindows.swift
+	swiftc rememberwindows.swift -o rememberwindows
 
 clean:
-	rm -f wfz
+	rm -f rememberwindows
