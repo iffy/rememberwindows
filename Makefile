@@ -1,5 +1,6 @@
 .PHONY: pkg dmg
 VERSION := $(shell changer current-version)
+SIGNER := "Developer ID Application: ONE PART RAIN, LLC"
 
 # Direct installation
 
@@ -45,6 +46,7 @@ dist/rememberwindows-installer.pkg: CHANGELOG.md dist/rememberwindows-component.
 		--package dist/rememberwindows-component.pkg \
 		--resources pkging/resources \
 		--version "$(VERSION)" \
+		--sign "$(SIGNER)" \
 		dist/rememberwindows-installer.pkg
 
 pkg: dist/rememberwindows-installer.pkg

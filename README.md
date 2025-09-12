@@ -1,6 +1,8 @@
 On recent versions of macOS, windows often get gathered to the main monitor after waking from sleep. This script tries to keep windows where they were before sleeping. Pull requests welcome.
 
-## Installation
+[Get it here](https://github.com/iffy/rememberwindows/releases/latest)
+
+## Installation on command line
 
 ```
 git clone https://github.com/iffy/rememberwindows.git
@@ -32,4 +34,10 @@ To remove everything run:
 
 ```
 make uninstall
+```
+
+## Making a new release
+
+```
+make dmg
 ```
