@@ -98,12 +98,7 @@ func captureWindowData(filename: String) {
         windowData.append(windowInfo)
 
         // Print position and title when saving
-        print("Saving window position:")
-        print("  App: \(appName)")
-        print("  Title: \(title ?? "N/A")")
-        print("  Position: (\(x), \(y))")
-        print("  Title Saved: \(title != nil && !title!.isEmpty ? "Yes" : "No")")
-        print("---")
+        print("Saving window position for \(appName): (\(x), \(y))")
     }
 
     // Save to JSON file
@@ -148,7 +143,6 @@ func repositionWindows(filename: String) {
 
             // Try to find the target window by window ID first
             var targetWindow: AXUIElement?
-            var matchType = "None"
 
             // Look for window with matching windowId in currentWindowList
             var cgWindowFound = false
@@ -200,7 +194,6 @@ func repositionWindows(filename: String) {
                         if score < bestMatchScore {
                             bestMatchScore = score
                             targetWindow = window
-                            matchType = "WindowID"
                         }
                     }
                 }
@@ -216,7 +209,6 @@ func repositionWindows(filename: String) {
                     let currentTitle = windowTitle as? String
                     if let currentTitle = currentTitle, !currentTitle.isEmpty, savedTitle == currentTitle {
                         targetWindow = window
-                        matchType = "Title"
                         break
                     }
                 }
@@ -251,7 +243,6 @@ func repositionWindows(filename: String) {
                         if score < bestMatchScore {
                             bestMatchScore = score
                             targetWindow = window
-                            matchType = "Position/Size"
                         }
                     }
                 }
@@ -274,15 +265,9 @@ func repositionWindows(filename: String) {
                 let currentTitle = currentTitleRef as? String
 
                 // Print debugging information
-                print("Restoring window for \(windowInfo.appName) (PID: \(windowInfo.pid)):")
-                print("  Title: \(windowInfo.title ?? "N/A")")
-                print("  Current Window Title: \(currentTitle ?? "N/A")")
-                print("  Match Type: \(matchType)")
-                if titleMatchAttempted && matchType != "Title" {
-                    print("  Title Match Failed: No window with title '\(windowInfo.title ?? "N/A")' found")
-                }
+                print("Restoring window for \(windowInfo.appName) (PID: \(windowInfo.pid)) [\(currentTitle ?? "no title")]:")
                 print("  Current Position: \(currentPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
-                print("  Target Position: (\(windowInfo.position[0]), \(windowInfo.position[1]))")
+                print("  Target Position:  (\(windowInfo.position[0]), \(windowInfo.position[1]))")
 
                 // Set position
                 var position = NSPoint(x: windowInfo.position[0], y: windowInfo.position[1])
@@ -317,7 +302,7 @@ func repositionWindows(filename: String) {
                     AXValueGetValue(posRef as! AXValue, .cgPoint, &point)
                     return point
                 }
-                print("  New Position: \(newPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
+                print("  New Position:     \(newPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
                 print("---")
             } else {
                 print("No matching window found for \(windowInfo.appName) (PID: \(windowInfo.pid))")
@@ -339,42 +324,92 @@ func monitorLockUnlock(filename: String) {
     // Set up notification center for distributed notifications
     let notificationCenter = DistributedNotificationCenter.default()
 
-    // Observe screensaver will start (just before potential lock)
+    // // Observe screensaver will start (just before potential lock)
+    // notificationCenter.addObserver(
+    //     forName: NSNotification.Name("com.apple.screensaver.willstart"),
+    //     object: nil,
+    //     queue: .main
+    // ) { _ in
+    //     print("Screensaver will start")
+    //     captureWindowData(filename: filename)
+    // }
+
+    // // Observe system wake notification
+    // notificationCenter.addObserver(
+    //     forName: NSWorkspace.didWakeNotification,
+    //     object: nil,
+    //     queue: .main
+    // ) { _ in
+    //     print("System woke up")
+    //     repositionWindows(filename: filename)
+    // }
+
+    // Observe screensaver start (lock) notification
     notificationCenter.addObserver(
-        forName: NSNotification.Name("com.apple.screensaver.willstart"),
+        forName: NSNotification.Name("com.apple.screenIsLocked"),
         object: nil,
         queue: .main
     ) { _ in
-        print("Screensaver will start")
+        print("Screen locked")
         captureWindowData(filename: filename)
     }
 
-    // Observe system wake notification
+    // Observe screensaver stop (unlock) notification
     notificationCenter.addObserver(
-        forName: NSWorkspace.didWakeNotification,
+        forName: NSNotification.Name("com.apple.screenIsUnlocked"),
         object: nil,
         queue: .main
     ) { _ in
-        print("System woke up")
+        print("Screen unlocked")
         repositionWindows(filename: filename)
     }
+
+    // // Observe system sleep notification
+    // notificationCenter.addObserver(
+    //     forName: NSWorkspace.willSleepNotification,
+    //     object: nil,
+    //     queue: .main
+    // ) { _ in
+    //     print("System will sleep")
+    // }
+
+    // // Observe system wake notification
+    // notificationCenter.addObserver(
+    //     forName: NSWorkspace.didWakeNotification,
+    //     object: nil,
+    //     queue: .main
+    // ) { _ in
+    //     print("System woke up")
+    // }
+
     RunLoop.main.run()
 }
 
+func getFilePath(filename: String?) -> String {
+    if let filename = filename, !filename.isEmpty {
+        return filename
+    } else {
+        let tempDir = NSTemporaryDirectory()
+        let tempFileName = "window_positions_\(UUID().uuidString).json"
+        let tempFilePath = (tempDir as NSString).appendingPathComponent(tempFileName)
+        return tempFilePath
+    }
+}
+
 func main() {
-    guard CommandLine.arguments.count == 3 else {
-        print("Usage: ./windowfreezer [capture|reposition|monitor] <filename>")
+    guard CommandLine.arguments.count >= 2 else {
+        print("Usage: ./windowfreezer [capture|reposition|monitor] [<filename>]")
         exit(1)
     }
 
     let command = CommandLine.arguments[1]
-    let filename = CommandLine.arguments[2]
+    let filename = getFilePath(filename: CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : nil)
+    print("Using file: \(filename)")
 
     switch command {
     case "capture":
         captureWindowData(filename: filename)
     case "reposition":
-        
         repositionWindows(filename: filename)
     case "monitor":
         print("Monitoring screen lock/unlock and sleep/wake events...")

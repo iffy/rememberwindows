@@ -1,0 +1,19 @@
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.github.iffy.rememberwindows</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/rememberwindows</string>
+        <string>monitor</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/var/log/rememberwindows.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/rememberwindows.err</string>
+</dict>
+</plist>
