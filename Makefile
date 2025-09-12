@@ -1,6 +1,6 @@
 .PHONY: pkg dmg
 VERSION := $(shell changer current-version)
-SIGNER := "Developer ID Application: ONE PART RAIN, LLC"
+SIGNER := Developer ID Installer: ONE PART RAIN, LLC
 
 # Direct installation
 
