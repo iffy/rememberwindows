@@ -1,6 +1,4 @@
-On recent versions of macOS, windows often get gathered to the main monitor after waking from sleep. This script tries to keep windows where they were before sleeping.
-
-Pull requests welcome.
+On recent versions of macOS, windows often get gathered to the main monitor after waking from sleep. This script tries to keep windows where they were before sleeping. Pull requests welcome.
 
 ## Installation
 
@@ -8,17 +6,10 @@ Pull requests welcome.
 git clone https://github.com/iffy/rememberwindows.git
 cd rememberwindows
 make
-make install
+make install # this will prompt for your password
 ```
 
 Try locking and unlocking your computer and see if the windows stay where they should.
-
-## Log files
-
-This will log to:
-
-- `/var/log/rememberwindows.log`
-- `/var/log/rememberwindows.err`
 
 ## Unintall
 
