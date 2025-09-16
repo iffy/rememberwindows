@@ -2,6 +2,13 @@ import Foundation
 import CoreGraphics
 import AppKit
 
+func log(_ message: String) {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+    let timestamp = formatter.string(from: Date())
+    print("[\(timestamp)] \(message)")
+}
+
 struct WindowInfo: Codable {
     let appName: String
     let windowId: Int
@@ -14,7 +21,7 @@ struct WindowInfo: Codable {
 func captureWindowData(filename: String) {
     // Get all on-screen windows
     guard let windowList = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as NSArray? else {
-        print("Error: Unable to retrieve window list")
+        log("Error: Unable to retrieve window list")
         exit(1)
     }
 
@@ -98,7 +105,7 @@ func captureWindowData(filename: String) {
         windowData.append(windowInfo)
 
         // Print position and title when saving
-        print("Saving window position for \(appName): (\(x), \(y))")
+        log("Saving window position for \(appName): (\(x), \(y))")
     }
 
     // Save to JSON file
@@ -107,9 +114,9 @@ func captureWindowData(filename: String) {
         encoder.outputFormatting = .prettyPrinted
         let jsonData = try encoder.encode(windowData)
         try jsonData.write(to: URL(fileURLWithPath: filename))
-        print("Window data saved to \(filename)")
+        log("Window data saved to \(filename)")
     } catch {
-        print("Error saving to \(filename): \(error)")
+        log("Error saving to \(filename): \(error)")
         exit(1)
     }
 }
@@ -122,7 +129,7 @@ func repositionWindows(filename: String) {
 
         // Get current on-screen windows for ID matching
         guard let currentWindowList = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as NSArray? else {
-            print("Error: Unable to retrieve current window list")
+            log("Error: Unable to retrieve current window list")
             return
         }
 
@@ -132,12 +139,12 @@ func repositionWindows(filename: String) {
             var error = AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowList)
 
             if error != .success || windowList == nil {
-                print("Error accessing windows for \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
+                log("Error accessing windows for \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
                 continue
             }
 
             guard let windows = windowList as? [AXUIElement] else {
-                print("Error: Could not cast window list for \(windowInfo.appName)")
+                log("Error: Could not cast window list for \(windowInfo.appName)")
                 continue
             }
 
@@ -265,9 +272,9 @@ func repositionWindows(filename: String) {
                 let currentTitle = currentTitleRef as? String
 
                 // Print debugging information
-                print("Restoring window for \(windowInfo.appName) (PID: \(windowInfo.pid)) [\(currentTitle ?? "no title")]:")
-                print("  Current Position: \(currentPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
-                print("  Target Position:  (\(windowInfo.position[0]), \(windowInfo.position[1]))")
+                log("Restoring window for \(windowInfo.appName) (PID: \(windowInfo.pid)) [\(currentTitle ?? "no title")]:")
+                log("  Current Position: \(currentPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
+                log("  Target Position:  (\(windowInfo.position[0]), \(windowInfo.position[1]))")
 
                 // Retry logic for repositioning
                 let maxAttempts = 10
@@ -285,12 +292,12 @@ func repositionWindows(filename: String) {
                     var position = NSPoint(x: windowInfo.position[0], y: windowInfo.position[1])
                     let positionValue = AXValueCreate(.cgPoint, &position)
                     if positionValue == nil {
-                        print("Error creating position value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
+                        log("Error creating position value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
                         break
                     }
                     error = AXUIElementSetAttributeValue(targetWindow, kAXPositionAttribute as CFString, positionValue!)
                     if error != .success {
-                        print("Error setting position for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
+                        log("Error setting position for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
                         break
                     }
 
@@ -298,12 +305,12 @@ func repositionWindows(filename: String) {
                     var size = NSSize(width: windowInfo.size[0], height: windowInfo.size[1])
                     let sizeValue = AXValueCreate(.cgSize, &size)
                     if sizeValue == nil {
-                        print("Error creating size value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
+                        log("Error creating size value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
                         break
                     }
                     error = AXUIElementSetAttributeValue(targetWindow, kAXSizeAttribute as CFString, sizeValue!)
                     if error != .success {
-                        print("Error setting size for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
+                        log("Error setting size for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
                         break
                     }
                     
@@ -327,16 +334,16 @@ func repositionWindows(filename: String) {
                         let tolerance: CGFloat = 5.0 // Allow small differences
                         if abs(newPos.x - targetPos.x) <= tolerance && abs(newPos.y - targetPos.y) <= tolerance {
                             positionChanged = true
-                            print("  Position successfully set on attempt \(attempt)")
+                            log("  Position successfully set on attempt \(attempt)")
                             break
                         } else {
-                            print("  Attempt \(attempt) failed - position still at (\(newPos.x), \(newPos.y))")
+                            log("  Attempt \(attempt) failed - position still at (\(newPos.x), \(newPos.y))")
                         }
                     }
                 }
                 
                 if !positionChanged {
-                    print("  Failed to set position after \(attempt) attempts")
+                    log("  Failed to set position after \(attempt) attempts")
                 }
 
                 // Get and print final position after all attempts
@@ -348,20 +355,20 @@ func repositionWindows(filename: String) {
                     AXValueGetValue(posRef as! AXValue, .cgPoint, &point)
                     return point
                 }
-                print("  Final Position:   \(finalPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
-                print("---")
+                log("  Final Position:   \(finalPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
+                log("---")
             } else {
-                print("No matching window found for \(windowInfo.appName) (PID: \(windowInfo.pid))")
-                print("  Title: \(windowInfo.title ?? "N/A")")
+                log("No matching window found for \(windowInfo.appName) (PID: \(windowInfo.pid))")
+                log("  Title: \(windowInfo.title ?? "N/A")")
                 if titleMatchAttempted {
-                    print("  Title Match Failed: No window with title '\(windowInfo.title ?? "N/A")' found")
+                    log("  Title Match Failed: No window with title '\(windowInfo.title ?? "N/A")' found")
                 }
-                print("---")
+                log("---")
             }
         }
-        print("Window positions restored from \(filename)")
+        log("Window positions restored from \(filename)")
     } catch {
-        print("Error reading or processing \(filename): \(error)")
+        log("Error reading or processing \(filename): \(error)")
         exit(1)
     }
 }
@@ -396,7 +403,7 @@ func monitorLockUnlock(filename: String) {
         object: nil,
         queue: .main
     ) { _ in
-        print("Screen locked")
+        log("Screen locked")
         captureWindowData(filename: filename)
     }
 
@@ -406,7 +413,7 @@ func monitorLockUnlock(filename: String) {
         object: nil,
         queue: .main
     ) { _ in
-        print("Screen unlocked")
+        log("Screen unlocked")
         repositionWindows(filename: filename)
     }
 
@@ -444,13 +451,13 @@ func getFilePath(filename: String?) -> String {
 
 func main() {
     guard CommandLine.arguments.count >= 2 else {
-        print("Usage: ./windowfreezer [capture|reposition|monitor] [<filename>]")
+        log("Usage: ./windowfreezer [capture|reposition|monitor] [<filename>]")
         exit(1)
     }
 
     let command = CommandLine.arguments[1]
     let filename = getFilePath(filename: CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : nil)
-    print("Using file: \(filename)")
+    log("Using file: \(filename)")
 
     switch command {
     case "capture":
@@ -458,10 +465,10 @@ func main() {
     case "reposition":
         repositionWindows(filename: filename)
     case "monitor":
-        print("Monitoring screen lock/unlock and sleep/wake events...")
+        log("Monitoring screen lock/unlock and sleep/wake events...")
         monitorLockUnlock(filename: filename)
     default:
-        print("Invalid command. Use 'capture', 'reposition' or 'monitor'.")
+        log("Invalid command. Use 'capture', 'reposition' or 'monitor'.")
         exit(1)
     }
 }

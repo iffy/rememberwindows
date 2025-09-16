@@ -1,0 +1,1 @@
+Stdout now includes timestamps
