@@ -269,40 +269,86 @@ func repositionWindows(filename: String) {
                 print("  Current Position: \(currentPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
                 print("  Target Position:  (\(windowInfo.position[0]), \(windowInfo.position[1]))")
 
-                // Set position
-                var position = NSPoint(x: windowInfo.position[0], y: windowInfo.position[1])
-                let positionValue = AXValueCreate(.cgPoint, &position)
-                if positionValue == nil {
-                    print("Error creating position value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
-                    continue
+                // Retry logic for repositioning
+                let maxAttempts = 10
+                let delayBetweenAttempts: TimeInterval = 0.5 // 0.5 seconds
+                let maxTotalTime: TimeInterval = 10.0 // 10 seconds
+                let startTime = Date()
+                
+                var attempt = 0
+                var positionChanged = false
+                
+                while attempt < maxAttempts && Date().timeIntervalSince(startTime) < maxTotalTime {
+                    attempt += 1
+                    
+                    // Set position
+                    var position = NSPoint(x: windowInfo.position[0], y: windowInfo.position[1])
+                    let positionValue = AXValueCreate(.cgPoint, &position)
+                    if positionValue == nil {
+                        print("Error creating position value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
+                        break
+                    }
+                    error = AXUIElementSetAttributeValue(targetWindow, kAXPositionAttribute as CFString, positionValue!)
+                    if error != .success {
+                        print("Error setting position for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
+                        break
+                    }
+
+                    // Set size
+                    var size = NSSize(width: windowInfo.size[0], height: windowInfo.size[1])
+                    let sizeValue = AXValueCreate(.cgSize, &size)
+                    if sizeValue == nil {
+                        print("Error creating size value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
+                        break
+                    }
+                    error = AXUIElementSetAttributeValue(targetWindow, kAXSizeAttribute as CFString, sizeValue!)
+                    if error != .success {
+                        print("Error setting size for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
+                        break
+                    }
+                    
+                    // Wait a bit for the change to take effect
+                    if attempt < maxAttempts {
+                        Thread.sleep(forTimeInterval: delayBetweenAttempts)
+                    }
+                    
+                    // Check if position changed
+                    var newPositionRef: CFTypeRef?
+                    AXUIElementCopyAttributeValue(targetWindow, kAXPositionAttribute as CFString, &newPositionRef)
+                    let newPosition = newPositionRef.flatMap { posRef -> NSPoint? in
+                        guard CFGetTypeID(posRef) == AXValueGetTypeID() else { return nil }
+                        var point = NSPoint()
+                        AXValueGetValue(posRef as! AXValue, .cgPoint, &point)
+                        return point
+                    }
+                    
+                    if let newPos = newPosition {
+                        let targetPos = NSPoint(x: windowInfo.position[0], y: windowInfo.position[1])
+                        let tolerance: CGFloat = 5.0 // Allow small differences
+                        if abs(newPos.x - targetPos.x) <= tolerance && abs(newPos.y - targetPos.y) <= tolerance {
+                            positionChanged = true
+                            print("  Position successfully set on attempt \(attempt)")
+                            break
+                        } else {
+                            print("  Attempt \(attempt) failed - position still at (\(newPos.x), \(newPos.y))")
+                        }
+                    }
                 }
-                error = AXUIElementSetAttributeValue(targetWindow, kAXPositionAttribute as CFString, positionValue!)
-                if error != .success {
-                    print("Error setting position for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
+                
+                if !positionChanged {
+                    print("  Failed to set position after \(attempt) attempts")
                 }
 
-                // Set size
-                var size = NSSize(width: windowInfo.size[0], height: windowInfo.size[1])
-                let sizeValue = AXValueCreate(.cgSize, &size)
-                if sizeValue == nil {
-                    print("Error creating size value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
-                    continue
-                }
-                error = AXUIElementSetAttributeValue(targetWindow, kAXSizeAttribute as CFString, sizeValue!)
-                if error != .success {
-                    print("Error setting size for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
-                }
-
-                // Get and print position after moving
-                var newPositionRef: CFTypeRef?
-                AXUIElementCopyAttributeValue(targetWindow, kAXPositionAttribute as CFString, &newPositionRef)
-                let newPosition = newPositionRef.flatMap { posRef -> NSPoint? in
+                // Get and print final position after all attempts
+                var finalPositionRef: CFTypeRef?
+                AXUIElementCopyAttributeValue(targetWindow, kAXPositionAttribute as CFString, &finalPositionRef)
+                let finalPosition = finalPositionRef.flatMap { posRef -> NSPoint? in
                     guard CFGetTypeID(posRef) == AXValueGetTypeID() else { return nil }
                     var point = NSPoint()
                     AXValueGetValue(posRef as! AXValue, .cgPoint, &point)
                     return point
                 }
-                print("  New Position:     \(newPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
+                print("  Final Position:   \(finalPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
                 print("---")
             } else {
                 print("No matching window found for \(windowInfo.appName) (PID: \(windowInfo.pid))")
