@@ -6,7 +6,65 @@ func log(_ message: String) {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
     let timestamp = formatter.string(from: Date())
+    let logMessage = "[\(timestamp)] \(message)\n"
+    
+    // Print to stdout
     print("[\(timestamp)] \(message)")
+    
+    // Log to file with rotation
+    let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs")
+    let logFile = logDir.appendingPathComponent("rememberwindows.log")
+    
+    do {
+        // Ensure log directory exists
+        try FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true, attributes: nil)
+        
+        // Check file size and rotate if necessary
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: logFile.path),
+           let fileSize = attributes[.size] as? UInt64,
+           fileSize > 1024 * 1024 { // 1MB
+            rotateLogFile(at: logFile)
+        }
+        
+        // Append to log file
+        if FileManager.default.fileExists(atPath: logFile.path) {
+            let fileHandle = try FileHandle(forWritingTo: logFile)
+            fileHandle.seekToEndOfFile()
+            if let data = logMessage.data(using: .utf8) {
+                fileHandle.write(data)
+            }
+            fileHandle.closeFile()
+        } else {
+            try logMessage.write(to: logFile, atomically: true, encoding: .utf8)
+        }
+    } catch {
+        // If logging to file fails, just print to stderr
+        fputs("Error writing to log file: \(error)\n", stderr)
+    }
+}
+
+func rotateLogFile(at logFile: URL) {
+    let fileManager = FileManager.default
+    let maxBackups = 3
+    
+    // Remove oldest backup if it exists
+    let oldestBackup = logFile.appendingPathExtension("\(maxBackups)")
+    if fileManager.fileExists(atPath: oldestBackup.path) {
+        try? fileManager.removeItem(at: oldestBackup)
+    }
+    
+    // Shift existing backups
+    for i in (1..<maxBackups).reversed() {
+        let currentBackup = logFile.appendingPathExtension("\(i)")
+        let nextBackup = logFile.appendingPathExtension("\(i + 1)")
+        if fileManager.fileExists(atPath: currentBackup.path) {
+            try? fileManager.moveItem(at: currentBackup, to: nextBackup)
+        }
+    }
+    
+    // Move current log to .1
+    let firstBackup = logFile.appendingPathExtension("1")
+    try? fileManager.moveItem(at: logFile, to: firstBackup)
 }
 
 struct WindowInfo: Codable {
@@ -337,7 +395,7 @@ func repositionWindows(filename: String) {
                             log("  Position successfully set on attempt \(attempt)")
                             break
                         } else {
-                            log("  Attempt \(attempt) failed - position still at (\(newPos.x), \(newPos.y))")
+                            log("  Attempt \(attempt) failed - position still at (\(newPos.x), \($0.y))")
                         }
                     }
                 }
