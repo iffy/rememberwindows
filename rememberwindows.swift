@@ -191,6 +191,17 @@ func repositionWindows(filename: String) {
             return
         }
 
+        // Structure to track windows that need repositioning
+        struct WindowToReposition {
+            let windowInfo: WindowInfo
+            let axWindow: AXUIElement
+            let targetPosition: NSPoint
+            let targetSize: NSSize
+        }
+        
+        var windowsToReposition: [WindowToReposition] = []
+        
+        // First pass: collect all windows that need repositioning
         for windowInfo in windowData {
             let appRef = AXUIElementCreateApplication(windowInfo.pid)
             var windowList: CFTypeRef?
@@ -314,7 +325,80 @@ func repositionWindows(filename: String) {
             }
 
             if let targetWindow = targetWindow {
-                // Get current position before moving
+                let targetPosition = NSPoint(x: windowInfo.position[0], y: windowInfo.position[1])
+                let targetSize = NSSize(width: windowInfo.size[0], height: windowInfo.size[1])
+                windowsToReposition.append(WindowToReposition(
+                    windowInfo: windowInfo,
+                    axWindow: targetWindow,
+                    targetPosition: targetPosition,
+                    targetSize: targetSize
+                ))
+            } else {
+                log("No matching window found for \(windowInfo.appName) (PID: \(windowInfo.pid))")
+                log("  Title: \(windowInfo.title ?? "N/A")")
+                if titleMatchAttempted {
+                    log("  Title Match Failed: No window with title '\(windowInfo.title ?? "N/A")' found")
+                }
+            }
+        }
+        
+        // Batch repositioning logic
+        let maxTotalTime: TimeInterval = 10.0 // 10 seconds
+        let delayBetweenAttempts: TimeInterval = 0.25 // 250ms
+        let startTime = Date()
+        var attempt = 0
+        
+        log("Starting batch repositioning of \(windowsToReposition.count) windows")
+        
+        while !windowsToReposition.isEmpty && Date().timeIntervalSince(startTime) < maxTotalTime {
+            attempt += 1
+            var remainingWindows: [WindowToReposition] = []
+            
+            log("Attempt \(attempt): repositioning \(windowsToReposition.count) windows")
+            
+            // Move all windows in this batch
+            for windowToReposition in windowsToReposition {
+                let windowInfo = windowToReposition.windowInfo
+                let targetWindow = windowToReposition.axWindow
+                
+                // Set position
+                var position = windowToReposition.targetPosition
+                let positionValue = AXValueCreate(.cgPoint, &position)
+                if positionValue == nil {
+                    log("Error creating position value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
+                    continue
+                }
+                let error = AXUIElementSetAttributeValue(targetWindow, kAXPositionAttribute as CFString, positionValue!)
+                if error != .success {
+                    log("Error setting position for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
+                    continue
+                }
+
+                // Set size
+                var size = windowToReposition.targetSize
+                let sizeValue = AXValueCreate(.cgSize, &size)
+                if sizeValue == nil {
+                    log("Error creating size value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
+                    continue
+                }
+                let sizeError = AXUIElementSetAttributeValue(targetWindow, kAXSizeAttribute as CFString, sizeValue!)
+                if sizeError != .success {
+                    log("Error setting size for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(sizeError)")
+                    continue
+                }
+            }
+            
+            // Wait for changes to take effect
+            if !windowsToReposition.isEmpty {
+                Thread.sleep(forTimeInterval: delayBetweenAttempts)
+            }
+            
+            // Check which windows still need repositioning
+            for windowToReposition in windowsToReposition {
+                let windowInfo = windowToReposition.windowInfo
+                let targetWindow = windowToReposition.axWindow
+                
+                // Check current position
                 var currentPositionRef: CFTypeRef?
                 AXUIElementCopyAttributeValue(targetWindow, kAXPositionAttribute as CFString, &currentPositionRef)
                 let currentPosition = currentPositionRef.flatMap { posRef -> NSPoint? in
@@ -323,107 +407,33 @@ func repositionWindows(filename: String) {
                     AXValueGetValue(posRef as! AXValue, .cgPoint, &point)
                     return point
                 }
-
-                // Get current title for logging
-                var currentTitleRef: CFTypeRef?
-                AXUIElementCopyAttributeValue(targetWindow, kAXTitleAttribute as CFString, &currentTitleRef)
-                let currentTitle = currentTitleRef as? String
-
-                // Print debugging information
-                log("Restoring window for \(windowInfo.appName) (PID: \(windowInfo.pid)) [\(currentTitle ?? "no title")]:")
-                log("  Current Position: \(currentPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
-                log("  Target Position:  (\(windowInfo.position[0]), \(windowInfo.position[1]))")
-
-                // Retry logic for repositioning
-                let maxAttempts = 10
-                let delayBetweenAttempts: TimeInterval = 0.5 // 0.5 seconds
-                let maxTotalTime: TimeInterval = 10.0 // 10 seconds
-                let startTime = Date()
                 
-                var attempt = 0
-                var positionChanged = false
-                
-                while attempt < maxAttempts && Date().timeIntervalSince(startTime) < maxTotalTime {
-                    attempt += 1
-                    
-                    // Set position
-                    var position = NSPoint(x: windowInfo.position[0], y: windowInfo.position[1])
-                    let positionValue = AXValueCreate(.cgPoint, &position)
-                    if positionValue == nil {
-                        log("Error creating position value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
-                        break
+                if let currentPos = currentPosition {
+                    let targetPos = windowToReposition.targetPosition
+                    let tolerance: CGFloat = 5.0 // Allow small differences
+                    if abs(currentPos.x - targetPos.x) <= tolerance && abs(currentPos.y - targetPos.y) <= tolerance {
+                        // Window is correctly positioned
+                        log("Window for \(windowInfo.appName) successfully positioned")
+                    } else {
+                        // Window still needs repositioning
+                        remainingWindows.append(windowToReposition)
+                        log("Window for \(windowInfo.appName) still at (\(currentPos.x), \(currentPos.y)), target (\(targetPos.x), \(targetPos.y))")
                     }
-                    error = AXUIElementSetAttributeValue(targetWindow, kAXPositionAttribute as CFString, positionValue!)
-                    if error != .success {
-                        log("Error setting position for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
-                        break
-                    }
-
-                    // Set size
-                    var size = NSSize(width: windowInfo.size[0], height: windowInfo.size[1])
-                    let sizeValue = AXValueCreate(.cgSize, &size)
-                    if sizeValue == nil {
-                        log("Error creating size value for window in \(windowInfo.appName) (PID: \(windowInfo.pid))")
-                        break
-                    }
-                    error = AXUIElementSetAttributeValue(targetWindow, kAXSizeAttribute as CFString, sizeValue!)
-                    if error != .success {
-                        log("Error setting size for window in \(windowInfo.appName) (PID: \(windowInfo.pid)): \(error)")
-                        break
-                    }
-                    
-                    // Wait a bit for the change to take effect
-                    if attempt < maxAttempts {
-                        Thread.sleep(forTimeInterval: delayBetweenAttempts)
-                    }
-                    
-                    // Check if position changed
-                    var newPositionRef: CFTypeRef?
-                    AXUIElementCopyAttributeValue(targetWindow, kAXPositionAttribute as CFString, &newPositionRef)
-                    let newPosition = newPositionRef.flatMap { posRef -> NSPoint? in
-                        guard CFGetTypeID(posRef) == AXValueGetTypeID() else { return nil }
-                        var point = NSPoint()
-                        AXValueGetValue(posRef as! AXValue, .cgPoint, &point)
-                        return point
-                    }
-                    
-                    if let newPos = newPosition {
-                        let targetPos = NSPoint(x: windowInfo.position[0], y: windowInfo.position[1])
-                        let tolerance: CGFloat = 5.0 // Allow small differences
-                        if abs(newPos.x - targetPos.x) <= tolerance && abs(newPos.y - targetPos.y) <= tolerance {
-                            positionChanged = true
-                            log("  Position successfully set on attempt \(attempt)")
-                            break
-                        } else {
-                            log("  Attempt \(attempt) failed - position still at (\(newPos.x), \(newPos.y))")
-                        }
-                    }
+                } else {
+                    // Could not get current position, keep trying
+                    remainingWindows.append(windowToReposition)
                 }
-                
-                if !positionChanged {
-                    log("  Failed to set position after \(attempt) attempts")
-                }
-
-                // Get and print final position after all attempts
-                var finalPositionRef: CFTypeRef?
-                AXUIElementCopyAttributeValue(targetWindow, kAXPositionAttribute as CFString, &finalPositionRef)
-                let finalPosition = finalPositionRef.flatMap { posRef -> NSPoint? in
-                    guard CFGetTypeID(posRef) == AXValueGetTypeID() else { return nil }
-                    var point = NSPoint()
-                    AXValueGetValue(posRef as! AXValue, .cgPoint, &point)
-                    return point
-                }
-                log("  Final Position:   \(finalPosition.map { "(\($0.x), \($0.y))" } ?? "Unknown")")
-                log("---")
-            } else {
-                log("No matching window found for \(windowInfo.appName) (PID: \(windowInfo.pid))")
-                log("  Title: \(windowInfo.title ?? "N/A")")
-                if titleMatchAttempted {
-                    log("  Title Match Failed: No window with title '\(windowInfo.title ?? "N/A")' found")
-                }
-                log("---")
             }
+            
+            windowsToReposition = remainingWindows
         }
+        
+        if windowsToReposition.isEmpty {
+            log("All windows successfully repositioned after \(attempt) attempts")
+        } else {
+            log("Failed to reposition \(windowsToReposition.count) windows after \(attempt) attempts within \(maxTotalTime) seconds")
+        }
+        
         log("Window positions restored from \(filename)")
     } catch {
         log("Error reading or processing \(filename): \(error)")

@@ -7,6 +7,10 @@ fi
 
 whoami
 mkdir -p "$HOME/Library/LaunchAgents"
+if [ -f "$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist" ]; then
+    su - "$USER" -c "/bin/launchctl stop '$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist'" || true
+    su - "$USER" -c "/bin/launchctl disable '$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist'" || true
+fi
 cp "./com.github.iffy.rememberwindows.plist" "$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist"
 chown $USER:staff "$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist"
 chmod 644 "$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist"
