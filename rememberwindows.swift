@@ -395,7 +395,7 @@ func repositionWindows(filename: String) {
                             log("  Position successfully set on attempt \(attempt)")
                             break
                         } else {
-                            log("  Attempt \(attempt) failed - position still at (\(newPos.x), \($0.y))")
+                            log("  Attempt \(attempt) failed - position still at (\(newPos.x), \(newPos.y))")
                         }
                     }
                 }
