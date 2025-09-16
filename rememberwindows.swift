@@ -12,7 +12,30 @@ func log(_ message: String) {
     print("[\(timestamp)] \(message)")
     
     // Log to file with rotation
-    let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs")
+    var logDir: URL
+    let systemLogDir = URL(fileURLWithPath: "/Library/Logs")
+    let systemLogFile = systemLogDir.appendingPathComponent("rememberwindows.log")
+    
+    do {
+        try FileManager.default.createDirectory(at: systemLogDir, withIntermediateDirectories: true, attributes: nil)
+        
+        // Check write access to the specific log file
+        if FileManager.default.fileExists(atPath: systemLogFile.path) {
+            if FileManager.default.isWritableFile(atPath: systemLogFile.path) {
+                logDir = systemLogDir
+            } else {
+                throw NSError(domain: "WriteAccess", code: 1, userInfo: nil)
+            }
+        } else {
+            // Try to create the file to test write access
+            try "".write(to: systemLogFile, atomically: true, encoding: .utf8)
+            // Clean up the empty file
+            try FileManager.default.removeItem(at: systemLogFile)
+            logDir = systemLogDir
+        }
+    } catch {
+        logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs")
+    }
     let logFile = logDir.appendingPathComponent("rememberwindows.log")
     
     do {

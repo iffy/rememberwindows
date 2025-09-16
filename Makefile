@@ -19,7 +19,7 @@ uninstall:
 	rm ~/Library/LaunchAgents/com.github.iffy.rememberwindows.plist
 	sudo rm /usr/local/bin/rememberwindows
 
-# Packaging for user LaunchAgents
+# Packaging for system LaunchDaemon
 
 pkging/root/usr/local/bin/rememberwindows: dist/rememberwindows
 	mkdir -p pkging/root/usr/local/bin
@@ -27,12 +27,12 @@ pkging/root/usr/local/bin/rememberwindows: dist/rememberwindows
 	chmod 755 pkging/root/usr/local/bin/rememberwindows
 	sudo chown root:wheel pkging/root/usr/local/bin/rememberwindows
 
-pkging/scripts/com.github.iffy.rememberwindows.plist: com.github.iffy.rememberwindows.plist
-	mkdir -p pkging/resources
-	cp com.github.iffy.rememberwindows.plist pkging/scripts/com.github.iffy.rememberwindows.plist
-	chmod 644 pkging/scripts/com.github.iffy.rememberwindows.plist
+pkging/root/Library/LaunchDaemons/com.github.iffy.rememberwindows.plist: com.github.iffy.rememberwindows.plist
+	mkdir -p pkging/root/Library/LaunchDaemons
+	cp com.github.iffy.rememberwindows.plist pkging/root/Library/LaunchDaemons/com.github.iffy.rememberwindows.plist
+	chmod 644 pkging/root/Library/LaunchDaemons/com.github.iffy.rememberwindows.plist
 
-dist/rememberwindows-component.pkg: CHANGELOG.md pkging/root/usr/local/bin/rememberwindows pkging/scripts/com.github.iffy.rememberwindows.plist pkging/scripts/postinstall
+dist/rememberwindows-component.pkg: CHANGELOG.md pkging/root/usr/local/bin/rememberwindows pkging/root/Library/LaunchDaemons/com.github.iffy.rememberwindows.plist pkging/scripts/postinstall
 	pkgbuild --root ./pkging/root \
 		--identifier com.github.iffy.rememberwindows \
 		--version "$(VERSION)" \

@@ -4,15 +4,7 @@ if [ ! -f /usr/local/bin/rememberwindows ]; then
     echo "Error: Binary not found" >&2
     exit 1
 fi
-
-whoami
-mkdir -p "$HOME/Library/LaunchAgents"
-if [ -f "$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist" ]; then
-    su - "$USER" -c "/bin/launchctl stop '$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist'" || true
-    su - "$USER" -c "/bin/launchctl disable '$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist'" || true
-fi
-cp "./com.github.iffy.rememberwindows.plist" "$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist"
-chown $USER:staff "$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist"
-chmod 644 "$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist"
-su - "$USER" -c "/bin/launchctl load -w '$HOME/Library/LaunchAgents/com.github.iffy.rememberwindows.plist'"
+/bin/launchctl stop /Library/LaunchDaemons/com.github.iffy.rememberwindows.plist || true
+/bin/launchctl disable /Library/LaunchDaemons/com.github.iffy.rememberwindows.plist || true
+/bin/launchctl load -w /Library/LaunchDaemons/com.github.iffy.rememberwindows.plist
 exit 0
