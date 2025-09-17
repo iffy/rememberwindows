@@ -7,6 +7,7 @@ SIGNER := Developer ID Installer: ONE PART RAIN, LLC
 dist/rememberwindows: rememberwindows.swift
 	mkdir -p dist
 	swiftc rememberwindows.swift -o dist/rememberwindows
+	codesign -f -s - dist/rememberwindows
 
 install: dist/rememberwindows com.github.iffy.rememberwindows.plist
 	sudo cp dist/rememberwindows /usr/local/bin/rememberwindows
