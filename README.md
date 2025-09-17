@@ -11,6 +11,14 @@ make install # this will prompt for your password
 
 Try locking and unlocking your computer and see if the windows stay where they should.
 
+## Logs
+
+Watch the log with:
+
+```
+tail -f ~/Library/Logs/rememberwindows.log
+```
+
 ## Manual run
 
 Following is what is run during lock/unlock:

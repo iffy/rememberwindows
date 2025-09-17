@@ -1,3 +1,8 @@
+# v0.4.0 - 2025-09-17
+
+- **NEW:** Forget the double-click installer. Command line works and isn't a pain.
+- **FIX:** Fix process restart
+
 # v0.3.0 - 2025-09-17
 
 - **NEW:** Will log to ~/Library/Logs/rememberwindows.log

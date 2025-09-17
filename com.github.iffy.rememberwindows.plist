@@ -10,9 +10,8 @@
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <dict>
-        <key>ThrottleInterval</key>
-        <integer>60</integer>
-    </dict>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
 </dict>
 </plist>
